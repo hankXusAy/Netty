@@ -1,9 +1,14 @@
 package com.xss.netty01;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.util.ReferenceCountUtil;
+
+import java.lang.ref.Reference;
 
 /**
  * @ClassName Client
@@ -24,7 +29,7 @@ public class Client {
             ChannelFuture f = b.group(group)
                     .channel(NioSocketChannel.class)
                     .handler(new ClientChannelInitializer())
-                    .connect("localhost",8877);
+                    .connect("localhost",8866);
 
             f.addListener(new ChannelFutureListener() {
                 @Override
@@ -38,6 +43,8 @@ public class Client {
             });
             f.sync();
             System.out.println(".......");
+
+            f.channel().closeFuture().sync();
         } finally {
             group.shutdownGracefully();
         }
@@ -47,6 +54,30 @@ class ClientChannelInitializer extends ChannelInitializer{
 
     @Override
     protected void initChannel(Channel ch) throws Exception {
-        System.out.println(ch);
+        ch.pipeline().addLast(new ClientHandler());
+    }
+}
+class ClientHandler extends ChannelInboundHandlerAdapter{
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        //channle 第一次连上可用，写出一个字符串 Direct Memory
+        ByteBuf byteBuf = Unpooled.copiedBuffer("hello".getBytes());
+        ctx.writeAndFlush(byteBuf);
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        ByteBuf buf = null;
+        try {
+             buf = (ByteBuf)msg;
+             byte[] bytes = new byte[buf.readableBytes()];
+             buf.getBytes(buf.readerIndex(),bytes);
+             System.out.println(new String(bytes));
+        } finally {
+            if(buf != null){
+                ReferenceCountUtil.release(buf);
+            }
+        }
+
     }
 }
