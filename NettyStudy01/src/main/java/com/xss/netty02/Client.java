@@ -1,4 +1,4 @@
-package com.xss.netty01;
+package com.xss.netty02;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
@@ -17,7 +17,10 @@ import io.netty.util.ReferenceCountUtil;
  * @Return
  */
 public class Client {
-    public static void main(String[] args) throws Exception{
+    private Channel channel = null;
+
+    public void connect() {
+
         //线程池
         EventLoopGroup group = new NioEventLoopGroup();
 
@@ -27,15 +30,17 @@ public class Client {
             ChannelFuture f = b.group(group)
                     .channel(NioSocketChannel.class)
                     .handler(new ClientChannelInitializer())
-                    .connect("localhost",8866);
+                    .connect("localhost", 8866);
 
             f.addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture future) throws Exception {
-                    if(!future.isSuccess()){
+                    if (!future.isSuccess()) {
                         System.out.println("not connect!");
-                    }else {
+                    } else {
                         System.out.println("connect");
+                        //initialize the channel
+                        channel = future.channel();
                     }
                 }
             });
@@ -43,19 +48,39 @@ public class Client {
             System.out.println(".......");
 
             f.channel().closeFuture().sync();
+            System.out.println("客户端已退出");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         } finally {
             group.shutdownGracefully();
         }
     }
+
+    public void send(String msg) {
+        ByteBuf buf = Unpooled.copiedBuffer(msg.getBytes());
+        channel.writeAndFlush(buf);
+    }
+
+    //退出
+    public void closeClient() {
+        this.send("bye");
+    }
+
+    public static void main(String[] args) {
+        Client c = new Client();
+        c.connect();
+    }
 }
-class ClientChannelInitializer extends ChannelInitializer{
+
+class ClientChannelInitializer extends ChannelInitializer {
 
     @Override
     protected void initChannel(Channel ch) throws Exception {
         ch.pipeline().addLast(new ClientHandler());
     }
 }
-class ClientHandler extends ChannelInboundHandlerAdapter{
+
+class ClientHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelActive(ChannelHandlerContext ctx) throws Exception {
         //channle 第一次连上可用，写出一个字符串 Direct Memory
@@ -67,21 +92,17 @@ class ClientHandler extends ChannelInboundHandlerAdapter{
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         ByteBuf buf = null;
         try {
-             buf = (ByteBuf)msg;
-             byte[] bytes = new byte[buf.readableBytes()];
-             buf.getBytes(buf.readerIndex(),bytes);
-             System.out.println(new String(bytes));
+            buf = (ByteBuf) msg;
+            byte[] bytes = new byte[buf.readableBytes()];
+            buf.getBytes(buf.readerIndex(), bytes);
+            String str = new String(bytes);
+            ClientFrame.INSTANCE.updateText(str);
+//             System.out.println(new String(bytes));
         } finally {
-            if(buf != null){
+            if (buf != null) {
                 ReferenceCountUtil.release(buf);
             }
         }
 
-    }
-
-    @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        cause.printStackTrace();
-        ctx.close();
     }
 }
